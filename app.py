@@ -1,8 +1,6 @@
 
-# ==============================
 # Flask App for Disease Prediction
-# With Fuzzy Matching + PDF Report
-# ==============================
+
 
 from flask import Flask, request, render_template, send_file, session,current_app
 import numpy as np
@@ -377,6 +375,7 @@ def download_pdf():
 
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
