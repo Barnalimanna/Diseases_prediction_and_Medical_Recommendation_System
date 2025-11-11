@@ -22,20 +22,41 @@ import tempfile
 app = Flask(__name__)
 app.secret_key = "your_secret_key"
 application=app
+
 # ===========================
-# Logger Configuration
+# Logger Configuration - Comprehensive
 # ===========================
 log_dir = "logs"
 if not os.path.exists(log_dir):
     os.makedirs(log_dir)
 
 log_file = os.path.join(log_dir, "app.log")
+
+# Create a rotating file handler
 handler = RotatingFileHandler(log_file, maxBytes=10485760, backupCount=10)  # 10MB per file
-handler.setFormatter(logging.Formatter(
-    '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-))
+formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
+)
+handler.setFormatter(formatter)
+
+# Configure app logger
 app.logger.addHandler(handler)
-app.logger.setLevel(logging.INFO)
+app.logger.setLevel(logging.DEBUG)
+
+# Configure werkzeug logger (Flask's built-in logger)
+log = logging.getLogger('werkzeug')
+log.addHandler(handler)
+log.setLevel(logging.DEBUG)
+
+# Add console handler for debugging
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(formatter)
+app.logger.addHandler(console_handler)
+log.addHandler(console_handler)
+
+app.logger.info("=" * 50)
+app.logger.info("Flask application started")
+app.logger.info("=" * 50)
 
 # Load datasets
 try:
@@ -339,7 +360,7 @@ def download_pdf():
 
         try:
             # Create a temporary file for the PDF
-            temp_pdf = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+            temp_pdf = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf', dir=log_dir)
             temp_pdf_path = temp_pdf.name
             temp_pdf.close()
             
@@ -420,22 +441,25 @@ def download_pdf():
             p.drawString(70, y, "Do not use any medicine without doctor's consultation.")
 
             p.save()
-            app.logger.info("PDF report generated successfully")
+            app.logger.info("PDF report generated successfully at: %s", temp_pdf_path)
             
-            # Send the file from disk
+            # Send the file from disk with proper cleanup
+            def remove_file(response):
+                try:
+                    if os.path.exists(temp_pdf_path):
+                        os.remove(temp_pdf_path)
+                        app.logger.info("Temporary PDF file cleaned up")
+                except Exception as e:
+                    app.logger.warning(f"Could not delete temporary PDF file: {e}")
+                return response
+
             response = send_file(
                 temp_pdf_path,
                 mimetype='application/pdf',
                 as_attachment=True,
                 download_name="Health_Report.pdf"
             )
-            
-            # Clean up the temporary file after sending
-            try:
-                os.remove(temp_pdf_path)
-            except Exception as cleanup_err:
-                app.logger.warning(f"Could not delete temporary PDF file: {cleanup_err}")
-            
+            response.call_on_close(remove_file)
             return response
             
         except Exception as pdf_err:
@@ -444,8 +468,9 @@ def download_pdf():
             try:
                 if 'temp_pdf_path' in locals() and os.path.exists(temp_pdf_path):
                     os.remove(temp_pdf_path)
-            except:
-                pass
+                    app.logger.info("Temporary PDF cleaned up after error")
+            except Exception as cleanup_err:
+                app.logger.warning(f"Error cleaning up PDF after exception: {cleanup_err}")
             raise
             
     except Exception as e:
@@ -467,6 +492,43 @@ def download_logs():
     except Exception as e:
         app.logger.error(f"Error downloading log file: {str(e)}", exc_info=True)
         return f"❌ An error occurred while downloading the log file: {str(e)}", 500
+
+
+# ===========================
+# Global Error Handlers
+# ===========================
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Catch all exceptions and log them"""
+    app.logger.error(f"Unhandled exception: {str(e)}", exc_info=True)
+    return f"❌ Internal Server Error: {str(e)}", 500
+
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Handle 500 errors"""
+    app.logger.error(f"500 Internal Server Error: {str(error)}", exc_info=True)
+    return "❌ An internal server error occurred. Please check the logs.", 500
+
+
+@app.errorhandler(404)
+def not_found_error(error):
+    """Handle 404 errors"""
+    app.logger.warning(f"404 Not Found: {request.url}")
+    return "❌ Page not found", 404
+
+
+@app.before_request
+def log_request():
+    """Log all incoming requests"""
+    app.logger.debug(f"Request: {request.method} {request.path} - IP: {request.remote_addr}")
+
+
+@app.after_request
+def log_response(response):
+    """Log all responses"""
+    app.logger.debug(f"Response: {response.status_code} - {request.method} {request.path}")
+    return response
 
 
 if __name__ == '__main__':
