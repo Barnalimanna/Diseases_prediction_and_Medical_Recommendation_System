@@ -27,32 +27,46 @@ application=app
 # Logger Configuration - Comprehensive
 # ===========================
 log_dir = "logs"
-if not os.path.exists(log_dir):
-    os.makedirs(log_dir)
+try:
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+except Exception as e:
+    print(f"Warning: Could not create logs directory: {e}")
+    log_dir = "/tmp"  # Fallback to tmp
 
 log_file = os.path.join(log_dir, "app.log")
 
-# Create a rotating file handler
-handler = RotatingFileHandler(log_file, maxBytes=10485760, backupCount=10)  # 10MB per file
-formatter = logging.Formatter(
-    '%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
-)
-handler.setFormatter(formatter)
+try:
+    # Create a rotating file handler
+    handler = RotatingFileHandler(log_file, maxBytes=10485760, backupCount=10)  # 10MB per file
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
+    )
+    handler.setFormatter(formatter)
 
-# Configure app logger
-app.logger.addHandler(handler)
-app.logger.setLevel(logging.DEBUG)
+    # Configure app logger
+    app.logger.addHandler(handler)
+    app.logger.setLevel(logging.DEBUG)
 
-# Configure werkzeug logger (Flask's built-in logger)
-log = logging.getLogger('werkzeug')
-log.addHandler(handler)
-log.setLevel(logging.DEBUG)
+    # Configure werkzeug logger (Flask's built-in logger)
+    log = logging.getLogger('werkzeug')
+    log.addHandler(handler)
+    log.setLevel(logging.DEBUG)
+except Exception as e:
+    print(f"Warning: Could not setup file logging: {e}")
 
-# Add console handler for debugging
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(formatter)
-app.logger.addHandler(console_handler)
-log.addHandler(console_handler)
+# Add console handler for debugging (always works)
+try:
+    console_handler = logging.StreamHandler()
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
+    )
+    console_handler.setFormatter(formatter)
+    app.logger.addHandler(console_handler)
+    log = logging.getLogger('werkzeug')
+    log.addHandler(console_handler)
+except Exception as e:
+    print(f"Warning: Could not setup console logging: {e}")
 
 app.logger.info("=" * 50)
 app.logger.info("Flask application started")
@@ -497,37 +511,42 @@ def download_logs():
 # ===========================
 # Global Error Handlers
 # ===========================
-@app.errorhandler(Exception)
-def handle_exception(e):
-    """Catch all exceptions and log them"""
-    app.logger.error(f"Unhandled exception: {str(e)}", exc_info=True)
-    return f"❌ Internal Server Error: {str(e)}", 500
-
-
 @app.errorhandler(500)
 def internal_error(error):
     """Handle 500 errors"""
-    app.logger.error(f"500 Internal Server Error: {str(error)}", exc_info=True)
+    try:
+        app.logger.error(f"500 Internal Server Error: {str(error)}", exc_info=True)
+    except Exception as log_err:
+        print(f"Error logging 500: {log_err}")
     return "❌ An internal server error occurred. Please check the logs.", 500
 
 
 @app.errorhandler(404)
 def not_found_error(error):
     """Handle 404 errors"""
-    app.logger.warning(f"404 Not Found: {request.url}")
+    try:
+        app.logger.warning(f"404 Not Found: {request.url}")
+    except Exception as log_err:
+        print(f"Error logging 404: {log_err}")
     return "❌ Page not found", 404
 
 
 @app.before_request
 def log_request():
     """Log all incoming requests"""
-    app.logger.debug(f"Request: {request.method} {request.path} - IP: {request.remote_addr}")
+    try:
+        app.logger.debug(f"Request: {request.method} {request.path} - IP: {request.remote_addr}")
+    except Exception as log_err:
+        print(f"Error logging request: {log_err}")
 
 
 @app.after_request
 def log_response(response):
     """Log all responses"""
-    app.logger.debug(f"Response: {response.status_code} - {request.method} {request.path}")
+    try:
+        app.logger.debug(f"Response: {response.status_code} - {request.method} {request.path}")
+    except Exception as log_err:
+        print(f"Error logging response: {log_err}")
     return response
 
 
