@@ -1,0 +1,20 @@
+2025-11-11 23:40:20,716 - app - INFO - All datasets loaded successfully
+2025-11-11 23:40:21,160 - app - INFO - Model loaded successfully
+2025-11-11 23:40:30,592 - app - INFO - All datasets loaded successfully
+2025-11-11 23:40:31,073 - app - INFO - Model loaded successfully
+2025-11-11 23:40:46,490 - app - INFO - All datasets loaded successfully
+2025-11-11 23:40:46,935 - app - INFO - Model loaded successfully
+2025-11-11 23:40:52,360 - app - INFO - All datasets loaded successfully
+2025-11-11 23:40:52,807 - app - INFO - Model loaded successfully
+2025-11-11 23:41:31,537 - app - INFO - All datasets loaded successfully
+2025-11-11 23:41:32,049 - app - INFO - Model loaded successfully
+2025-11-11 23:41:48,524 - app - INFO - All datasets loaded successfully
+2025-11-11 23:41:49,014 - app - INFO - Model loaded successfully
+2025-11-11 23:42:06,662 - app - INFO - All datasets loaded successfully
+2025-11-11 23:42:07,103 - app - INFO - Model loaded successfully
+2025-11-11 23:42:07,328 - app - INFO - All datasets loaded successfully
+2025-11-11 23:42:07,770 - app - INFO - Model loaded successfully
+2025-11-11 23:42:24,175 - app - INFO - User symptoms received: ['caugh']
+2025-11-11 23:42:24,196 - app - INFO - Disease predicted: Urinary tract infection
+2025-11-11 23:42:37,085 - app - INFO - PDF report generated successfully
+2025-11-11 23:43:07,205 - app - INFO - Log file downloaded
