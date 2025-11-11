@@ -457,24 +457,35 @@ def download_pdf():
             p.save()
             app.logger.info("PDF report generated successfully at: %s", temp_pdf_path)
             
-            # Send the file from disk with proper cleanup
-            def remove_file(response):
+            # Send the file and delete immediately
+            try:
+                # Read file into memory
+                with open(temp_pdf_path, 'rb') as pdf_file:
+                    pdf_data = pdf_file.read()
+                
+                # Delete temp file immediately
+                try:
+                    os.remove(temp_pdf_path)
+                    app.logger.info("Temporary PDF file cleaned up after reading")
+                except Exception as cleanup_err:
+                    app.logger.warning(f"Could not delete temporary PDF file: {cleanup_err}")
+                
+                # Return file from memory
+                return send_file(
+                    io.BytesIO(pdf_data),
+                    mimetype='application/pdf',
+                    as_attachment=True,
+                    download_name="Health_Report.pdf"
+                )
+            except Exception as send_err:
+                app.logger.error(f"Error sending PDF file: {str(send_err)}", exc_info=True)
+                # Clean up temp file if read failed
                 try:
                     if os.path.exists(temp_pdf_path):
                         os.remove(temp_pdf_path)
-                        app.logger.info("Temporary PDF file cleaned up")
-                except Exception as e:
-                    app.logger.warning(f"Could not delete temporary PDF file: {e}")
-                return response
-
-            response = send_file(
-                temp_pdf_path,
-                mimetype='application/pdf',
-                as_attachment=True,
-                download_name="Health_Report.pdf"
-            )
-            response.call_on_close(remove_file)
-            return response
+                except:
+                    pass
+                raise
             
         except Exception as pdf_err:
             app.logger.error(f"Error during PDF generation or sending: {str(pdf_err)}", exc_info=True)
