@@ -16,6 +16,7 @@ import os
 import logging
 from logging.handlers import RotatingFileHandler
 from datetime import datetime
+import tempfile
 
 # Flask setup
 app = Flask(__name__)
@@ -334,11 +335,15 @@ def download_pdf():
         report = session.get('report')
         if not report:
             app.logger.warning("PDF download attempted without a report")
-            return "No report available. Please predict first."
+            return "No report available. Please predict first.", 400
 
         try:
-            buffer = io.BytesIO()
-            p = canvas.Canvas(buffer, pagesize=letter)
+            # Create a temporary file for the PDF
+            temp_pdf = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+            temp_pdf_path = temp_pdf.name
+            temp_pdf.close()
+            
+            p = canvas.Canvas(temp_pdf_path, pagesize=letter)
             p.setTitle("Health Report")
 
             width, height = letter
@@ -353,7 +358,6 @@ def download_pdf():
             p.setFont("Helvetica-Bold", 16)
             p.drawString(200, y, "Health Prediction Report")
             y -= 40
-
 
             p.setFont("Helvetica-Bold", 12)
             p.drawString(50, y, "Disease:")
@@ -416,18 +420,32 @@ def download_pdf():
             p.drawString(70, y, "Do not use any medicine without doctor's consultation.")
 
             p.save()
-            buffer.seek(0)
             app.logger.info("PDF report generated successfully")
             
-            # Return the file with proper parameters
-            return send_file(
-                buffer,
+            # Send the file from disk
+            response = send_file(
+                temp_pdf_path,
                 mimetype='application/pdf',
                 as_attachment=True,
                 download_name="Health_Report.pdf"
             )
+            
+            # Clean up the temporary file after sending
+            try:
+                os.remove(temp_pdf_path)
+            except Exception as cleanup_err:
+                app.logger.warning(f"Could not delete temporary PDF file: {cleanup_err}")
+            
+            return response
+            
         except Exception as pdf_err:
             app.logger.error(f"Error during PDF generation or sending: {str(pdf_err)}", exc_info=True)
+            # Clean up temp file if it exists
+            try:
+                if 'temp_pdf_path' in locals() and os.path.exists(temp_pdf_path):
+                    os.remove(temp_pdf_path)
+            except:
+                pass
             raise
             
     except Exception as e:
