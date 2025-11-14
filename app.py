@@ -4,7 +4,7 @@
 # With Fuzzy Matching + PDF Report
 # ==============================
 
-from flask import Flask, request, render_template, send_file, session,current_app
+from flask import Flask, request, render_template, session,Response
 import numpy as np
 import pandas as pd
 import pickle
@@ -14,7 +14,6 @@ from reportlab.pdfgen import canvas
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.lib.utils import simpleSplit
 import io
-import os
 
 # Flask setup
 app = Flask(__name__)
@@ -264,29 +263,26 @@ def download_pdf():
     write_list("Workouts:", report['workout'])
     write_list("Diets:", report['my_diet'])
 
-    # # Use absolute path for static image
-    # warning_icon_path = os.path.join(current_app.root_path, 'static', 'warning_icon.png')
-    # if os.path.exists(warning_icon_path):
-    #     p.setFillColorRGB(1, 0, 0)
-    #     p.drawImage(warning_icon_path, 50, y - 3, width=12, height=12)
-    # else:
-    #     print("⚠️ warning_icon.png not found in production")
 
-    
 
     p.setFont("Helvetica-Bold", 10)
     p.setFillColorRGB(1, 0, 0)
-    p.drawString(70, y, "⚠️ Do not use any medicine without doctor's consultation.")
+    p.drawString(70, y, " ⚠️ Do not use any medicine without doctor's consultation.")
 
     p.save()
     buffer.seek(0)
-    return send_file(buffer, as_attachment=False, download_name="Health_Report.pdf", mimetype='application/pdf')
+    pdf_data = buffer.getvalue()
 
+    # Create a Flask Response object
+    response = Response(pdf_data, mimetype='application/pdf')
+
+    # Set the header to display inline (like as_attachment=False)
+    response.headers['Content-Disposition'] = 'inline; filename=Health_Report.pdf'
+
+    return response
 
 if __name__ == '__main__':
     app.run(debug=True)
-
-
 
 
 
