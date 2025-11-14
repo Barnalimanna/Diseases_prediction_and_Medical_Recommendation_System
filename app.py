@@ -1,6 +1,8 @@
 
+# ==============================
 # Flask App for Disease Prediction
-
+# With Fuzzy Matching + PDF Report
+# ==============================
 
 from flask import Flask, request, render_template, send_file, session,current_app
 import numpy as np
@@ -13,91 +15,22 @@ from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.lib.utils import simpleSplit
 import io
 import os
-import logging
-from logging.handlers import RotatingFileHandler
-from datetime import datetime
-import tempfile
 
 # Flask setup
 app = Flask(__name__)
 app.secret_key = "your_secret_key"
 application=app
 
-# ===========================
-# Logger Configuration - Comprehensive
-# ===========================
-log_dir = "logs"
-try:
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
-except Exception as e:
-    print(f"Warning: Could not create logs directory: {e}")
-    log_dir = "/tmp"  # Fallback to tmp
-
-log_file = os.path.join(log_dir, "app.log")
-
-try:
-    # Create a rotating file handler
-    handler = RotatingFileHandler(log_file, maxBytes=10485760, backupCount=10)  # 10MB per file
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
-    )
-    handler.setFormatter(formatter)
-
-    # Configure app logger
-    app.logger.addHandler(handler)
-    app.logger.setLevel(logging.DEBUG)
-
-    # Configure werkzeug logger (Flask's built-in logger)
-    log = logging.getLogger('werkzeug')
-    log.addHandler(handler)
-    log.setLevel(logging.DEBUG)
-except Exception as e:
-    print(f"Warning: Could not setup file logging: {e}")
-
-# Add console handler for debugging (always works)
-try:
-    console_handler = logging.StreamHandler()
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
-    )
-    console_handler.setFormatter(formatter)
-    app.logger.addHandler(console_handler)
-    log = logging.getLogger('werkzeug')
-    log.addHandler(console_handler)
-except Exception as e:
-    print(f"Warning: Could not setup console logging: {e}")
-
-app.logger.info("=" * 50)
-app.logger.info("Flask application started")
-app.logger.info("=" * 50)
-
 # Load datasets
-try:
-    sym_des = pd.read_csv("datasets/symtoms_df.csv")
-    precautions = pd.read_csv("datasets/precautions_df.csv")
-    workout = pd.read_csv("datasets/workout_df.csv")
-    description = pd.read_csv("datasets/description.csv")
-    medications = pd.read_csv("datasets/medications.csv")
-    diets = pd.read_csv("datasets/diets.csv")
-    app.logger.info("All datasets loaded successfully")
-except FileNotFoundError as e:
-    app.logger.error(f"Dataset file not found: {e}")
-    raise
-except Exception as e:
-    app.logger.error(f"Error loading datasets: {e}")
-    raise
+sym_des = pd.read_csv("datasets/symtoms_df.csv")
+precautions = pd.read_csv("datasets/precautions_df.csv")
+workout = pd.read_csv("datasets/workout_df.csv")
+description = pd.read_csv("datasets/description.csv")
+medications = pd.read_csv("datasets/medications.csv")
+diets = pd.read_csv("datasets/diets.csv")
 
 # Load model
-try:
-    svc = pickle.load(open('models/svc.pkl', 'rb'))
-    app.logger.info("Model loaded successfully")
-except FileNotFoundError as e:
-    app.logger.error(f"Model file not found: {e}")
-    raise
-except Exception as e:
-    app.logger.error(f"Error loading model: {e}")
-    raise
+svc = pickle.load(open('models/svc.pkl', 'rb'))
 
 # ===========================
 # Helper Functions
@@ -191,58 +124,50 @@ def index():
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    try:
-        symptoms = request.form.get('symptoms')
-        if not symptoms:
-            app.logger.warning("Prediction attempted with no symptoms")
-            return render_template('index.html', message="⚠️ Please enter symptoms first.")
+    symptoms = request.form.get('symptoms')
+    if not symptoms:
+        return render_template('index.html', message="⚠️ Please enter symptoms first.")
 
-        # Split by comma
-        user_symptoms = [s.strip() for s in symptoms.split(',') if s.strip()]
-        app.logger.info(f"User symptoms received: {user_symptoms}")
+    # Split by comma
+    user_symptoms = [s.strip() for s in symptoms.split(',') if s.strip()]
 
-        corrected = []
-        invalid = []
+    corrected = []
+    invalid = []
 
-        for s in user_symptoms:
-            match = correct_symptom(s)
-            if match:
-                corrected.append(match)
-            else:
-                invalid.append(s)
+    for s in user_symptoms:
+        match = correct_symptom(s)
+        if match:
+            corrected.append(match)
+        else:
+            invalid.append(s)
 
-        if not corrected:
-            app.logger.warning(f"No valid symptoms found. Invalid symptoms: {invalid}")
-            return render_template('index.html', message="❌ No valid symptoms found. Check spelling.")
+    if not corrected:
+        return render_template('index.html', message="❌ No valid symptoms found. Check spelling.")
 
-        predicted_disease = get_predicted_value(corrected)
-        dis_des, pre, med, diet, wrkout = helper(predicted_disease)
-        app.logger.info(f"Disease predicted: {predicted_disease}")
+    predicted_disease = get_predicted_value(corrected)
+    dis_des, pre, med, diet, wrkout = helper(predicted_disease)
 
-        my_precautions = [i for i in pre[0]]
+    my_precautions = [i for i in pre[0]]
 
-        # Save report for PDF
-        session['report'] = {
-            "predicted_disease": predicted_disease,
-            "dis_des": dis_des,
-            "my_precautions": my_precautions,
-            "medications": med,
-            "my_diet": diet,
-            "workout": wrkout
-        }
+    # Save report for PDF
+    session['report'] = {
+        "predicted_disease": predicted_disease,
+        "dis_des": dis_des,
+        "my_precautions": my_precautions,
+        "medications": med,
+        "my_diet": diet,
+        "workout": wrkout
+    }
 
-        return render_template('index.html',
-                               predicted_disease=predicted_disease,
-                               dis_des=dis_des,
-                               my_precautions=my_precautions,
-                               medications=med,
-                               my_diet=diet,
-                               workout=wrkout,
-                               corrected=corrected,
-                               invalid=invalid)
-    except Exception as e:
-        app.logger.error(f"Error in predict route: {str(e)}", exc_info=True)
-        return render_template('index.html', message="❌ An error occurred during prediction. Please try again.")
+    return render_template('index.html',
+                           predicted_disease=predicted_disease,
+                           dis_des=dis_des,
+                           my_precautions=my_precautions,
+                           medications=med,
+                           my_diet=diet,
+                           workout=wrkout,
+                           corrected=corrected,
+                           invalid=invalid)
 @app.route('/')
 def home():
     return render_template('home.html')
@@ -366,204 +291,92 @@ def developer():
 
 @app.route('/download_pdf')
 def download_pdf():
-    try:
-        report = session.get('report')
-        if not report:
-            app.logger.warning("PDF download attempted without a report")
-            return "No report available. Please predict first.", 400
+    report = session.get('report')
+    if not report:
+        return "No report available. Please predict first."
 
-        try:
-            # Create a temporary file for the PDF
-            temp_pdf = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf', dir=log_dir)
-            temp_pdf_path = temp_pdf.name
-            temp_pdf.close()
-            
-            p = canvas.Canvas(temp_pdf_path, pagesize=letter)
-            p.setTitle("Health Report")
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer, pagesize=letter)
+    p.setTitle("Health Report")
 
-            width, height = letter
+    width, height = letter
 
-            def set_page_background():
-                p.setFillColorRGB(211/255, 211/255, 211/255)
-                p.rect(0, 0, width, height, fill=1, stroke=0)
-                p.setFillColorRGB(0, 0, 0)
-            set_page_background()
+    def set_page_background():
+        p.setFillColorRGB(211/255, 211/255, 211/255)
+        p.rect(0, 0, width, height, fill=1, stroke=0)
+        p.setFillColorRGB(0, 0, 0)
+    set_page_background()
 
-            y = 750
-            p.setFont("Helvetica-Bold", 16)
-            p.drawString(200, y, "Health Prediction Report")
-            y -= 40
+    y = 750
+    p.setFont("Helvetica-Bold", 16)
+    p.drawString(200, y, "Health Prediction Report")
+    y -= 40
 
-            p.setFont("Helvetica-Bold", 12)
-            p.drawString(50, y, "Disease:")
-            text_width = stringWidth("Disease:", "Helvetica-Bold", 12)
-            p.setFont("Helvetica", 12)
-            p.drawString(50 + text_width + 5, y, report['predicted_disease'])
-            y -= 20
 
-            label = "Description:"
-            label_width = stringWidth(label, "Helvetica-Bold", 12)
-            p.setFont("Helvetica-Bold", 12)
-            p.drawString(50, y, label)
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(50, y, "Disease:")
+    text_width = stringWidth("Disease:", "Helvetica-Bold", 12)
+    p.setFont("Helvetica", 12)
+    p.drawString(50 + text_width + 5, y, report['predicted_disease'])
+    y -= 20
 
-            description_text = report['dis_des']
-            p.setFont("Helvetica", 12)
-            lines = simpleSplit(description_text, "Helvetica", 12, width - 100)
-            first_line_offset = label_width + 5
-            if lines:
-                p.drawString(50 + first_line_offset, y, lines[0])
-                y -= 15
-                for line in lines[1:]:
-                    p.drawString(50, y, line)
-                    y -= 15
-            y -= 10
+    label = "Description:"
+    label_width = stringWidth(label, "Helvetica-Bold", 12)
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(50, y, label)
 
-            def write_list(title, items):
-                nonlocal y
-                p.setFont("Helvetica-Bold", 12)
-                p.drawString(50, y, title)
-                y -= 20
+    description_text = report['dis_des']
+    p.setFont("Helvetica", 12)
+    lines = simpleSplit(description_text, "Helvetica", 12, width - 100)
+    first_line_offset = label_width + 5
+    if lines:
+        p.drawString(50 + first_line_offset, y, lines[0])
+        y -= 15
+        for line in lines[1:]:
+            p.drawString(50, y, line)
+            y -= 15
+    y -= 10
+
+    def write_list(title, items):
+        nonlocal y
+        p.setFont("Helvetica-Bold", 12)
+        p.drawString(50, y, title)
+        y -= 20
+        p.setFont("Helvetica", 11)
+        for item in items:
+            if y < 100:
+                p.showPage()
+                set_page_background()
+                y = 750
                 p.setFont("Helvetica", 11)
-                for item in items:
-                    if y < 100:
-                        p.showPage()
-                        set_page_background()
-                        y = 750
-                        p.setFont("Helvetica", 11)
-                    p.drawString(70, y, f"- {item}")
-                    y -= 15
-                y -= 10
+            p.drawString(70, y, f"- {item}")
+            y -= 15
+        y -= 10
 
-            write_list("Precautions:", report['my_precautions'])
-            write_list("Medications:", report['medications'])
-            write_list("Workouts:", report['workout'])
-            write_list("Diets:", report['my_diet'])
+    write_list("Precautions:", report['my_precautions'])
+    write_list("Medications:", report['medications'])
+    write_list("Workouts:", report['workout'])
+    write_list("Diets:", report['my_diet'])
 
-            # Use absolute path for static image
-            warning_icon_path = os.path.join(current_app.root_path, 'static', 'warning_icon.png')
-            if os.path.exists(warning_icon_path):
-                try:
-                    p.setFillColorRGB(1, 0, 0)
-                    p.drawImage(warning_icon_path, 50, y - 3, width=12, height=12)
-                except Exception as img_err:
-                    app.logger.warning(f"Could not draw warning image: {img_err}")
-            else:
-                app.logger.warning("warning_icon.png not found")
+    # Use absolute path for static image
+    warning_icon_path = os.path.join(current_app.root_path, 'static', 'warning_icon.png')
+    if os.path.exists(warning_icon_path):
+        p.setFillColorRGB(1, 0, 0)
+        p.drawImage(warning_icon_path, 50, y - 3, width=12, height=12)
+    else:
+        print("⚠️ warning_icon.png not found in production")
 
-            p.setFont("Helvetica-Bold", 10)
-            p.setFillColorRGB(1, 0, 0)
-            p.drawString(70, y, "Do not use any medicine without doctor's consultation.")
+    p.setFont("Helvetica-Bold", 10)
+    p.setFillColorRGB(1, 0, 0)
+    p.drawString(70, y, "Do not use any medicine without doctor's consultation.")
 
-            p.save()
-            app.logger.info("PDF report generated successfully at: %s", temp_pdf_path)
-            
-            # Send the file and delete immediately
-            try:
-                # Read file into memory
-                with open(temp_pdf_path, 'rb') as pdf_file:
-                    pdf_data = pdf_file.read()
-                
-                # Delete temp file immediately
-                try:
-                    os.remove(temp_pdf_path)
-                    app.logger.info("Temporary PDF file cleaned up after reading")
-                except Exception as cleanup_err:
-                    app.logger.warning(f"Could not delete temporary PDF file: {cleanup_err}")
-                
-                # Return file from memory
-                return send_file(
-                    io.BytesIO(pdf_data),
-                    mimetype='application/pdf',
-                    as_attachment=True,
-                    download_name="Health_Report.pdf"
-                )
-            except Exception as send_err:
-                app.logger.error(f"Error sending PDF file: {str(send_err)}", exc_info=True)
-                # Clean up temp file if read failed
-                try:
-                    if os.path.exists(temp_pdf_path):
-                        os.remove(temp_pdf_path)
-                except:
-                    pass
-                raise
-            
-        except Exception as pdf_err:
-            app.logger.error(f"Error during PDF generation or sending: {str(pdf_err)}", exc_info=True)
-            # Clean up temp file if it exists
-            try:
-                if 'temp_pdf_path' in locals() and os.path.exists(temp_pdf_path):
-                    os.remove(temp_pdf_path)
-                    app.logger.info("Temporary PDF cleaned up after error")
-            except Exception as cleanup_err:
-                app.logger.warning(f"Error cleaning up PDF after exception: {cleanup_err}")
-            raise
-            
-    except Exception as e:
-        app.logger.error(f"Error in download_pdf route: {str(e)}", exc_info=True)
-        return "❌ An error occurred while generating the PDF. Please try again.", 500
-
-
-@app.route('/download_logs')
-def download_logs():
-    """Download the application log file"""
-    try:
-        log_file_path = os.path.join(log_dir, "app.log")
-        if not os.path.exists(log_file_path):
-            app.logger.warning("Log file download attempted but file does not exist")
-            return "❌ Log file not found.", 404
-        
-        app.logger.info("Log file downloaded")
-        return send_file(log_file_path, as_attachment=True, download_name="app.log", mimetype='text/plain')
-    except Exception as e:
-        app.logger.error(f"Error downloading log file: {str(e)}", exc_info=True)
-        return f"❌ An error occurred while downloading the log file: {str(e)}", 500
-
-
-# ===========================
-# Global Error Handlers
-# ===========================
-@app.errorhandler(500)
-def internal_error(error):
-    """Handle 500 errors"""
-    try:
-        app.logger.error(f"500 Internal Server Error: {str(error)}", exc_info=True)
-    except Exception as log_err:
-        print(f"Error logging 500: {log_err}")
-    return "❌ An internal server error occurred. Please check the logs.", 500
-
-
-@app.errorhandler(404)
-def not_found_error(error):
-    """Handle 404 errors"""
-    try:
-        app.logger.warning(f"404 Not Found: {request.url}")
-    except Exception as log_err:
-        print(f"Error logging 404: {log_err}")
-    return "❌ Page not found", 404
-
-
-@app.before_request
-def log_request():
-    """Log all incoming requests"""
-    try:
-        app.logger.debug(f"Request: {request.method} {request.path} - IP: {request.remote_addr}")
-    except Exception as log_err:
-        print(f"Error logging request: {log_err}")
-
-
-@app.after_request
-def log_response(response):
-    """Log all responses"""
-    try:
-        app.logger.debug(f"Response: {response.status_code} - {request.method} {request.path}")
-    except Exception as log_err:
-        print(f"Error logging response: {log_err}")
-    return response
+    p.save()
+    buffer.seek(0)
+    return send_file(buffer, as_attachment=True, download_name="Health_Report.pdf", mimetype='application/pdf')
 
 
 if __name__ == '__main__':
     app.run(debug=True)
-
 
 
 
